@@ -91,11 +91,13 @@ in
         # NixOS exposes this as LoadCredential=NAME:PATH.
         LoadCredential = lib.mapAttrsToList (name: path: "${name}:${path}") cfg.credentials;
 
-        ExecStart = "${openclawPkg}/bin/openclaw gateway";
+        ExecStart = lib.mkIf (cfg.credentials == {}) "${openclawPkg}/bin/openclaw gateway";
       };
 
       # Convert loaded credentials into env vars without copying them into the nix store.
       # systemd mounts credentials at $CREDENTIALS_DIRECTORY/<name>
+      # When we use `script`, systemd will generate an ExecStart wrapper for it, so we must
+      # not also set a conflicting ExecStart.
       script = lib.mkIf (cfg.credentials != {}) ''
         set -euo pipefail
         export CREDENTIALS_DIRECTORY="${"$"}CREDENTIALS_DIRECTORY"
