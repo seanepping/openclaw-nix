@@ -20,7 +20,7 @@ in
     enable = lib.mkEnableOption "OpenClaw gateway/agent";
 
     package = lib.mkOption {
-      type = lib.types.package;
+      type = lib.types.nullOr lib.types.package;
       default = pkgs.openclaw-gateway or null;
       description = "OpenClaw gateway package (from nixpkgs or an overlay).";
     };
