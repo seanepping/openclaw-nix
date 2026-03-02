@@ -6,6 +6,7 @@ let
   json = pkgs.formats.json {};
 
   # Non-secret base config. Secrets should be injected via systemd credentials/env.
+  # When settings are empty, we don't generate/force a JSON file.
   openclawConfigFile = json.generate "openclaw.json" cfg.settings;
 
   # The upstream OpenClaw package to run. You can override this in host config.
@@ -84,7 +85,8 @@ in
         # OpenClaw runtime expects HOME.
         Environment = [
           "HOME=${stateDir}"
-          "OPENCLAW_CONFIG_PATH=${stateDir}/openclaw.json"
+          # If you want OpenClaw's CLI/wizard to mutate config, point this at a writable file.
+          "OPENCLAW_CONFIG_PATH=${stateDir}/.openclaw/openclaw.json"
         ];
 
         # Preferred: pass secrets via systemd credentials then map into env.
@@ -92,6 +94,30 @@ in
         LoadCredential = lib.mapAttrsToList (name: path: "${name}:${path}") cfg.credentials;
 
         ExecStart = lib.mkIf (cfg.credentials == {}) "${openclawPkg}/bin/openclaw gateway";
+
+        # Seed config on first boot (or if missing). After seeding, the CLI is free to mutate it.
+        ExecStartPre = pkgs.writeShellScript "openclaw-seed-config" ''
+          set -euo pipefail
+
+          cfg_dir="${stateDir}/.openclaw"
+          cfg_path="$cfg_dir/openclaw.json"
+          if [ -e "$cfg_path" ]; then
+            exit 0
+          fi
+
+          mkdir -p "$cfg_dir"
+
+          if [ -e "${openclawConfigFile}" ] && [ "${if cfg.settings != {} then "1" else "0"}" = "1" ]; then
+            # If Nix settings are provided, seed from the generated JSON.
+            cp -f "${openclawConfigFile}" "$cfg_path"
+          else
+            # Otherwise, seed a minimal stub so `openclaw config` has a file to edit.
+            printf '{\n}\n' > "$cfg_path"
+          fi
+
+          chmod 0600 "$cfg_path"
+          chown ${cfg.user}:${cfg.group} "$cfg_path"
+        '';
       };
 
       # Convert loaded credentials into env vars without copying them into the nix store.
@@ -110,11 +136,15 @@ in
       '';
     };
 
-    environment.etc."openclaw/openclaw.json".source = openclawConfigFile;
+    environment.etc."openclaw/openclaw.json" = lib.mkIf (cfg.settings != {}) {
+      source = openclawConfigFile;
+    };
 
     # Also place the config at the runtime path expected by the service.
     systemd.tmpfiles.rules = [
       "d ${stateDir} 0750 ${cfg.user} ${cfg.group} - -"
+      "d ${stateDir}/.openclaw 0750 ${cfg.user} ${cfg.group} - -"
+    ] ++ lib.optionals (cfg.settings != {}) [
       "L+ ${stateDir}/openclaw.json - - - - /etc/openclaw/openclaw.json"
     ];
   };
