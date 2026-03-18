@@ -9,3 +9,7 @@ Goals:
 - Inject secrets via systemd credentials/env, not plaintext config
 
 Status: scaffold
+
+Current work in progress:
+- reusable OpenClaw service module
+- early design for a packaged `openclaw-agent-cli` policy wrapper
