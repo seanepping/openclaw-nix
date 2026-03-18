@@ -33,13 +33,13 @@ That packaged helper is intentionally incomplete, but it is concrete enough to r
 - integration points for host exec-approval configuration
 - reusable docs and examples
 
-### Fleet repo (`loonar-float-nix`) owns
+### Package consumer configuration owns
 
-- which hosts enable the wrapper
+- whether the wrapper is enabled for a given deployment
 - which shared policy profiles exist
 - which agent ids bind to which policy profiles
 - exact allowlisted OpenClaw subcommands and argument constraints for those profiles
-- whether a host uses readonly-only or adds an ops/write profile
+- whether a deployment uses readonly-only or adds an ops/write profile
 
 ## Why Not Allowlist Raw `openclaw`
 
@@ -55,7 +55,7 @@ The safer model is:
 
 ## What The Readonly Test Taught Us
 
-The first host-local wrapper PR exposed two important truths:
+The first deployment test exposed two important truths:
 
 - the wrapper cannot assume direct read access to `/run/agenix/...` secrets
 - the wrapper cannot assume the OpenClaw binary lives at `/run/current-system/sw/bin/openclaw`
@@ -83,7 +83,7 @@ We should treat these as complementary layers:
 Current direction after review:
 
 - `exec-approvals.json` should remain OpenClaw-owned, not Nix-owned
-- the wrapper policy may still be Nix-generated and host-managed
+- the wrapper policy may still be Nix-generated and deployment-managed
 - raw `openclaw` should stay off the agent's exec approval allowlist
 - only the dedicated wrapper path should be allowlisted for the relevant agent ids
 
@@ -99,9 +99,11 @@ But the wrapped OpenClaw executable path must come from Nix-rendered configurati
 
 ### Policy path
 
-Install a generated policy file alongside OpenClaw state, for example:
+Install a generated policy file alongside OpenClaw state, under the runtime state directory managed by the package consumer.
 
-- `/var/lib/openclaw/.openclaw/agent-cli-policy.json`
+Example path:
+
+- `<openclaw-state-dir>/agent-cli-policy.json`
 
 The wrapper reads this file at runtime. This keeps the policy near the rest of the OpenClaw runtime state while still allowing Nix to manage the file contents and ownership.
 
@@ -123,8 +125,8 @@ First cut JSON shape:
 {
   "openclawBin": "/nix/store/.../bin/openclaw",
   "env": {
-    "HOME": "/var/lib/openclaw",
-    "OPENCLAW_CONFIG_PATH": "/var/lib/openclaw/.openclaw/openclaw.json"
+    "HOME": "<openclaw-home>",
+    "OPENCLAW_CONFIG_PATH": "<openclaw-state-dir>/openclaw.json"
   },
   "profiles": {
     "readonly": {
@@ -169,11 +171,11 @@ services.openclaw.agentCliWrapper = {
   enable = true;
 
   packageName = "openclaw-agent-cli";
-  policyFile = "/var/lib/openclaw/.openclaw/agent-cli-policy.json";
+  policyFile = "${config.services.openclaw.stateDir}/.openclaw/agent-cli-policy.json";
 
   env = {
-    HOME = "/var/lib/openclaw";
-    OPENCLAW_CONFIG_PATH = "/var/lib/openclaw/.openclaw/openclaw.json";
+    HOME = config.services.openclaw.home;
+    OPENCLAW_CONFIG_PATH = "${config.services.openclaw.stateDir}/.openclaw/openclaw.json";
   };
 
   profiles.readonly = {
@@ -221,10 +223,10 @@ The exact schema can be refined, but the important part is that policy stays dec
 - [ ] Generate/install the wrapper in `/run/current-system/sw/bin`.
 - [ ] Support explicit env + runtime credential plumbing without `sudo`.
 
-### Phase 3: Fleet integration
+### Phase 3: Consumer integration
 
-- [ ] Move emacagent policy data out of ad hoc shell snippets and into Nix policy config.
-- [ ] Define shared profiles and bind `main` to a readonly profile.
+- [ ] Move deployment policy data out of ad hoc shell snippets and into Nix policy config.
+- [ ] Define shared profiles and bind the relevant agent ids to those profiles.
 - [ ] Remove the current broken host-local readonly wrappers instead of preserving them.
 
 ### Phase 4: Exec approvals alignment

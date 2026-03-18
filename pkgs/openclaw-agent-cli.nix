@@ -6,7 +6,7 @@ pkgs.writeShellApplication {
   text = ''
     set -euo pipefail
 
-    POLICY_PATH="''${OPENCLAW_AGENT_CLI_POLICY_PATH:-/var/lib/openclaw/.openclaw/agent-cli-policy.json}"
+    POLICY_PATH="''${OPENCLAW_AGENT_CLI_POLICY_PATH:?OPENCLAW_AGENT_CLI_POLICY_PATH must be set}"
 
     die() {
       echo "$*" >&2
