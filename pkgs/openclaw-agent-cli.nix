@@ -6,7 +6,7 @@ pkgs.writeShellApplication {
   text = ''
     set -euo pipefail
 
-    POLICY_PATH="''${OPENCLAW_AGENT_CLI_POLICY_PATH:-/etc/openclaw/agent-cli-policy.json}"
+    POLICY_PATH="''${OPENCLAW_AGENT_CLI_POLICY_PATH:-/var/lib/openclaw/.openclaw/agent-cli-policy.json}"
 
     die() {
       echo "$*" >&2
@@ -32,8 +32,12 @@ pkgs.writeShellApplication {
     [[ -n "$openclaw_bin" && "$openclaw_bin" != "null" ]] || die "policy missing openclawBin"
     [[ -x "$openclaw_bin" ]] || die "openclaw binary not executable: $openclaw_bin"
 
-    mapfile -t allowed_exact < <(${pkgs.jq}/bin/jq -c '.commands.exact[]? // empty' "$POLICY_PATH")
-    mapfile -t config_globs < <(${pkgs.jq}/bin/jq -r '.commands.configGet.allowedPaths[]? // empty' "$POLICY_PATH")
+    agent_id="''${OPENCLAW_AGENT_ID:-main}"
+    profile=$(${pkgs.jq}/bin/jq -r --arg agent "$agent_id" '.agentBindings[$agent] // empty' "$POLICY_PATH")
+    [[ -n "$profile" ]] || die "no wrapper policy bound for agent: $agent_id"
+
+    mapfile -t allowed_exact < <(${pkgs.jq}/bin/jq -c --arg profile "$profile" '.profiles[$profile].commands.exact[]? // empty' "$POLICY_PATH")
+    mapfile -t config_globs < <(${pkgs.jq}/bin/jq -r --arg profile "$profile" '.profiles[$profile].commands.configGet.allowedPaths[]? // empty' "$POLICY_PATH")
 
     args_json=$(printf '%s\n' "$@" | ${pkgs.jq}/bin/jq -R . | ${pkgs.jq}/bin/jq -s .)
 
