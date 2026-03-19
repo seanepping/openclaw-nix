@@ -122,6 +122,10 @@ in
                 argv = [ "status" "--deep" ];
               }
               {
+                kind = "prefix";
+                prefix = [ "docs" ];
+              }
+              {
                 kind = "prefixArgGlob";
                 prefix = [ "config" "get" ];
                 argIndex = 2;
@@ -129,10 +133,10 @@ in
               }
               {
                 kind = "help";
-                topLevel = true;
-                subcommands = [ "status" "logs" "agents" "config" ];
+                allowAnyCommand = true;
               }
             ];
+            denyRules = [ ];
           };
         };
         description = "Named wrapper policy profiles keyed by profile id.";

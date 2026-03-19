@@ -103,7 +103,7 @@ The wrapper should:
 
 ## Policy Shape
 
-The scalable model is a profile-local rule list.
+The scalable model is a profile-local rule list with optional deny rules.
 
 ```json
 {
@@ -120,12 +120,8 @@ The scalable model is a profile-local rule list.
           "argv": ["status", "--deep"]
         },
         {
-          "kind": "exact",
-          "argv": ["logs", "--follow"]
-        },
-        {
-          "kind": "exact",
-          "argv": ["agents", "list", "--bindings"]
+          "kind": "prefix",
+          "prefix": ["docs"]
         },
         {
           "kind": "prefixArgGlob",
@@ -146,10 +142,10 @@ The scalable model is a profile-local rule list.
         },
         {
           "kind": "help",
-          "topLevel": true,
-          "subcommands": ["status", "logs", "agents", "config"]
+          "allowAnyCommand": true
         }
-      ]
+      ],
+      "denyRules": []
     }
   },
   "agentBindings": {
@@ -157,6 +153,34 @@ The scalable model is a profile-local rule list.
   }
 }
 ```
+
+Supported rule kinds:
+
+- `exact`
+  - fields:
+    - `argv` (required): exact argv vector to allow or deny
+- `prefix`
+  - fields:
+    - `prefix` (required): argv prefix to match
+    - `minArgs` (optional): minimum total argv length; defaults to `prefix.length`
+    - `maxArgs` (optional): maximum total argv length; if omitted, no upper bound is enforced
+  - use when the underlying CLI should validate normal arguments and the wrapper only needs to authorize command shape
+- `prefixArgGlob`
+  - fields:
+    - `prefix` (required): argv prefix to match
+    - `argIndex` (required): zero-based argv index to validate
+    - `allowed` (required): allowed glob patterns for the selected arg
+    - `minArgs` (optional): defaults to `prefix.length + 1`
+    - `maxArgs` (optional): defaults to `prefix.length + 1`
+  - use when one argument needs an explicit allowlist while other parsing still belongs to the CLI
+- `help`
+  - fields:
+    - `allowAnyCommand` (optional): allow any command structure ending in `--help`
+    - `topLevel` (optional): allow `<command> --help`
+    - `maxDepth` (optional): maximum argv length accepted for help exploration; defaults to `64`
+  - use to keep CLI exploration available without broadening normal command execution
+
+Deny rules use the same rule kinds as allow rules. They run first.
 
 ## Proposed Module Surface
 
@@ -174,42 +198,41 @@ services.openclaw.agentCliWrapper = {
     OPENCLAW_CONFIG_PATH = "${config.services.openclaw.stateDir}/.openclaw/openclaw.json";
   };
 
-  profiles.readonly.rules = [
-    {
-      kind = "exact";
-      argv = [ "status" "--deep" ];
-    }
-    {
-      kind = "exact";
-      argv = [ "logs" "--follow" ];
-    }
-    {
-      kind = "exact";
-      argv = [ "agents" "list" "--bindings" ];
-    }
-    {
-      kind = "prefixArgGlob";
-      prefix = [ "config" "get" ];
-      argIndex = 2;
-      allowed = [
-        "gateway"
-        "gateway.*"
-        "agents"
-        "agents.*"
-        "channels"
-        "channels.*"
-        "models"
-        "models.*"
-        "skills"
-        "skills.*"
-      ];
-    }
-    {
-      kind = "help";
-      topLevel = true;
-      subcommands = [ "status" "logs" "agents" "config" ];
-    }
-  ];
+  profiles.readonly = {
+    rules = [
+      {
+        kind = "exact";
+        argv = [ "status" "--deep" ];
+      }
+      {
+        kind = "prefix";
+        prefix = [ "docs" ];
+      }
+      {
+        kind = "prefixArgGlob";
+        prefix = [ "config" "get" ];
+        argIndex = 2;
+        allowed = [
+          "gateway"
+          "gateway.*"
+          "agents"
+          "agents.*"
+          "channels"
+          "channels.*"
+          "models"
+          "models.*"
+          "skills"
+          "skills.*"
+        ];
+      }
+      {
+        kind = "help";
+        allowAnyCommand = true;
+      }
+    ];
+
+    denyRules = [ ];
+  };
 
   agentBindings = {
     main = "readonly";
@@ -223,10 +246,11 @@ The current implementation direction is:
 
 - a single installed helper command
 - a generated policy file in OpenClaw state
-- profile-based command policy with agent bindings
+- profile-based rule lists with agent bindings
 - explicit runtime env export
 - optional credential-backed env export
-- explicit help-only discovery paths alongside strict action allowlists
+- help as a first-class exploration rule
+- optional deny rules ahead of allow rules
 
 ## Decision Heuristic
 
