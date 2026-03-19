@@ -2,6 +2,7 @@
 
 let
   cfg = config.services.openclaw;
+  wrapperCfg = cfg.agentCliWrapper;
 
   json = pkgs.formats.json {};
 
@@ -12,8 +13,25 @@ let
   # The upstream OpenClaw package to run. You can override this in host config.
   openclawPkg = cfg.package;
 
-  # Convenience: a stable state dir.
-  stateDir = "/var/lib/openclaw";
+  stateDir = cfg.stateDir;
+  stateConfigDir = "${stateDir}/.openclaw";
+  runtimeConfigPath = "${stateConfigDir}/openclaw.json";
+  wrapperPolicyPath = wrapperCfg.policyFile;
+
+  wrapperPolicyFormat = pkgs.formats.json {};
+  wrapperPackage = pkgs.callPackage ../pkgs/openclaw-agent-cli.nix {};
+
+  wrapperPolicy = wrapperPolicyFormat.generate "openclaw-agent-cli-policy.json" {
+    openclawBin = "${openclawPkg}/bin/openclaw";
+    env = wrapperCfg.env // {
+      OPENCLAW_CONFIG_PATH = runtimeConfigPath;
+      HOME = cfg.home;
+    };
+    profiles = wrapperCfg.profiles;
+    agentBindings = wrapperCfg.agentBindings;
+  };
+
+  enabledWrapper = wrapperCfg.enable && openclawPkg != null;
 
 in
 {
@@ -36,6 +54,18 @@ in
       default = "openclaw";
     };
 
+    home = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/openclaw";
+      description = "Home directory for the OpenClaw service user.";
+    };
+
+    stateDir = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/openclaw";
+      description = "Base state directory for OpenClaw runtime files.";
+    };
+
     # This becomes the content of openclaw.json. Keep secrets out.
     settings = lib.mkOption {
       type = json.type;
@@ -53,13 +83,61 @@ in
       };
       description = "Env var -> file path. Files must contain the secret value.";
     };
+
+    agentCliWrapper = {
+      enable = lib.mkEnableOption "a policy-enforcing OpenClaw CLI helper for agents";
+
+      packageName = lib.mkOption {
+        type = lib.types.str;
+        default = "openclaw-agent-cli";
+        description = "Installed command name for the wrapper helper.";
+      };
+
+      policyFile = lib.mkOption {
+        type = lib.types.str;
+        default = "${stateConfigDir}/agent-cli-policy.json";
+        description = "Runtime path for the generated wrapper policy file.";
+      };
+
+      env = lib.mkOption {
+        type = lib.types.attrsOf lib.types.str;
+        default = {};
+        description = "Additional non-secret environment variables exported by the wrapper.";
+      };
+
+      profiles = lib.mkOption {
+        type = lib.types.attrsOf json.type;
+        default = {};
+        example = {
+          readonly = {
+            commands = {
+              exact = [
+                [ "status" "--deep" ]
+                [ "logs" "--lines" "200" ]
+              ];
+              configGet.allowedPaths = [ "gateway" "gateway.*" ];
+            };
+          };
+        };
+        description = "Named wrapper policy profiles keyed by profile id.";
+      };
+
+      agentBindings = lib.mkOption {
+        type = lib.types.attrsOf lib.types.str;
+        default = {};
+        example = {
+          main = "readonly";
+        };
+        description = "Map of OpenClaw agent id to wrapper profile id.";
+      };
+    };
   };
 
   config = lib.mkIf cfg.enable {
     users.users.${cfg.user} = {
       isSystemUser = true;
       group = cfg.group;
-      home = stateDir;
+      home = cfg.home;
       createHome = true;
     };
 
@@ -84,9 +162,9 @@ in
 
         # OpenClaw runtime expects HOME.
         Environment = [
-          "HOME=${stateDir}"
+          "HOME=${cfg.home}"
           # If you want OpenClaw's CLI/wizard to mutate config, point this at a writable file.
-          "OPENCLAW_CONFIG_PATH=${stateDir}/.openclaw/openclaw.json"
+          "OPENCLAW_CONFIG_PATH=${runtimeConfigPath}"
         ];
 
         # Preferred: pass secrets via systemd credentials then map into env.
@@ -99,8 +177,8 @@ in
         ExecStartPre = pkgs.writeShellScript "openclaw-seed-config" ''
           set -euo pipefail
 
-          cfg_dir="${stateDir}/.openclaw"
-          cfg_path="$cfg_dir/openclaw.json"
+          cfg_dir="${stateConfigDir}"
+          cfg_path="${runtimeConfigPath}"
           if [ -e "$cfg_path" ]; then
             exit 0
           fi
@@ -136,16 +214,28 @@ in
       '';
     };
 
-    environment.etc."openclaw/openclaw.json" = lib.mkIf (cfg.settings != {}) {
-      source = openclawConfigFile;
+    environment.etc = lib.mkIf (cfg.settings != {}) {
+      "openclaw/openclaw.json" = {
+        source = openclawConfigFile;
+      };
     };
+
+    environment.systemPackages = lib.mkIf enabledWrapper [
+      (pkgs.writeShellScriptBin wrapperCfg.packageName ''
+        set -euo pipefail
+        export OPENCLAW_AGENT_CLI_POLICY_PATH="${wrapperPolicyPath}"
+        exec ${wrapperPackage}/bin/openclaw-agent-cli "$@"
+      '')
+    ];
 
     # Also place the config at the runtime path expected by the service.
     systemd.tmpfiles.rules = [
       "d ${stateDir} 0750 ${cfg.user} ${cfg.group} - -"
-      "d ${stateDir}/.openclaw 0750 ${cfg.user} ${cfg.group} - -"
+      "d ${stateConfigDir} 0750 ${cfg.user} ${cfg.group} - -"
     ] ++ lib.optionals (cfg.settings != {}) [
       "L+ ${stateDir}/openclaw.json - - - - /etc/openclaw/openclaw.json"
+    ] ++ lib.optionals enabledWrapper [
+      "C ${wrapperPolicyPath} 0640 ${cfg.user} ${cfg.group} - ${wrapperPolicy}"
     ];
   };
 }
