@@ -116,17 +116,23 @@ in
         default = {};
         example = {
           readonly = {
-            commands = {
-              exact = [
-                [ "status" "--deep" ]
-                [ "logs" "--follow" ]
-              ];
-              configGet.allowedPaths = [ "gateway" "gateway.*" ];
-              help = {
+            rules = [
+              {
+                kind = "exact";
+                argv = [ "status" "--deep" ];
+              }
+              {
+                kind = "prefixArgGlob";
+                prefix = [ "config" "get" ];
+                argIndex = 2;
+                allowed = [ "gateway" "gateway.*" ];
+              }
+              {
+                kind = "help";
                 topLevel = true;
                 subcommands = [ "status" "logs" "agents" "config" ];
-              };
-            };
+              }
+            ];
           };
         };
         description = "Named wrapper policy profiles keyed by profile id.";

@@ -36,48 +36,74 @@ pkgs.writeShellApplication {
     profile=$(${pkgs.jq}/bin/jq -r --arg agent "$agent_id" '.agentBindings[$agent] // empty' "$POLICY_PATH")
     [[ -n "$profile" ]] || die "no wrapper policy bound for agent: $agent_id"
 
-    mapfile -t allowed_exact < <(${pkgs.jq}/bin/jq -c --arg profile "$profile" '.profiles[$profile].commands.exact[]? // empty' "$POLICY_PATH")
-    mapfile -t config_globs < <(${pkgs.jq}/bin/jq -r --arg profile "$profile" '.profiles[$profile].commands.configGet.allowedPaths[]? // empty' "$POLICY_PATH")
-    allow_help_top_level=$(${pkgs.jq}/bin/jq -r --arg profile "$profile" '.profiles[$profile].commands.help.topLevel // false' "$POLICY_PATH")
-    mapfile -t help_subcommands < <(${pkgs.jq}/bin/jq -r --arg profile "$profile" '.profiles[$profile].commands.help.subcommands[]? // empty' "$POLICY_PATH")
+    mapfile -t profile_rules < <(${pkgs.jq}/bin/jq -c --arg profile "$profile" '.profiles[$profile].rules[]? // empty' "$POLICY_PATH")
 
     args_json=$(printf '%s\0' "$@" | ${pkgs.jq}/bin/jq -Rsc 'split("\u0000")[:-1]')
 
-    for candidate in "''${allowed_exact[@]:-}"; do
-      if [[ "$candidate" == "$args_json" ]]; then
-        exec "$openclaw_bin" "$@"
-      fi
+    match_glob() {
+      local value="$1"
+      local pattern="$2"
+      ${pkgs.bash}/bin/bash -O extglob -c 'case "$1" in $2) exit 0 ;; *) exit 1 ;; esac' _ "$value" "$pattern"
+    }
+
+    for rule in "''${profile_rules[@]:-}"; do
+      [[ -z "$rule" ]] && continue
+
+      rule_kind=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.kind')
+
+      case "$rule_kind" in
+        exact)
+          rule_argv=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -c '.argv')
+          if [[ "$rule_argv" == "$args_json" ]]; then
+            exec "$openclaw_bin" "$@"
+          fi
+          ;;
+
+        prefixArgGlob)
+          prefix_json=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -c '.prefix')
+          prefix_len=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.prefix | length')
+
+          if [[ "$#" -eq $((prefix_len + 1)) ]]; then
+            candidate_prefix=$(printf '%s\0' "''${@:1:prefix_len}" | ${pkgs.jq}/bin/jq -Rsc 'split("\u0000")[:-1]')
+            if [[ "$candidate_prefix" == "$prefix_json" ]]; then
+              target_arg=$(${pkgs.jq}/bin/jq -r --argjson argv "$args_json" '.argIndex as $i | $argv[$i] // empty' <<<"$rule")
+              mapfile -t allowed_globs < <(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.allowed[]? // empty')
+              for pattern in "''${allowed_globs[@]:-}"; do
+                if match_glob "$target_arg" "$pattern"; then
+                  exec "$openclaw_bin" "$@"
+                fi
+              done
+              die "argument outside allowlist: $target_arg"
+            fi
+          fi
+          ;;
+
+        help)
+          allow_top_level=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.topLevel // false')
+          mapfile -t help_subcommands < <(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.subcommands[]? // empty')
+
+          if [[ "$#" -eq 1 && ( "$1" == "help" || "$1" == "--help" ) ]]; then
+            exec "$openclaw_bin" "$@"
+          fi
+
+          if [[ "$#" -eq 2 && "$2" == "--help" && "$allow_top_level" == "true" ]]; then
+            exec "$openclaw_bin" "$@"
+          fi
+
+          if [[ "$#" -eq 3 && "$3" == "--help" ]]; then
+            for subcommand in "''${help_subcommands[@]:-}"; do
+              if [[ "$1" == "$subcommand" ]]; then
+                exec "$openclaw_bin" "$@"
+              fi
+            done
+          fi
+          ;;
+
+        *)
+          die "unknown rule kind in policy: $rule_kind"
+          ;;
+      esac
     done
-
-    if [[ "$#" -eq 1 && "$1" == "help" ]]; then
-      exec "$openclaw_bin" "$@"
-    fi
-
-    if [[ "$#" -eq 1 && "$1" == "--help" ]]; then
-      exec "$openclaw_bin" "$@"
-    fi
-
-    if [[ "$#" -eq 2 && "$2" == "--help" && "$allow_help_top_level" == "true" ]]; then
-      exec "$openclaw_bin" "$@"
-    fi
-
-    if [[ "$#" -eq 3 && "$3" == "--help" ]]; then
-      for subcommand in "''${help_subcommands[@]:-}"; do
-        if [[ "$1" == "$subcommand" ]]; then
-          exec "$openclaw_bin" "$@"
-        fi
-      done
-    fi
-
-    if [[ "$#" -eq 3 && "$1" == "config" && "$2" == "get" ]]; then
-      path="$3"
-      for pattern in "''${config_globs[@]:-}"; do
-        if ${pkgs.bash}/bin/bash -O extglob -c 'case "$1" in $2) exit 0 ;; *) exit 1 ;; esac' _ "$path" "$pattern"; then
-          exec "$openclaw_bin" "$@"
-        fi
-      done
-      die "config path outside allowlist: $path"
-    fi
 
     die "command not permitted by policy"
   '';
