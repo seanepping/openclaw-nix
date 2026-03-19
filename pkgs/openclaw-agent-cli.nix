@@ -50,9 +50,11 @@ pkgs.writeShellApplication {
     if [[ "$#" -eq 3 && "$1" == "config" && "$2" == "get" ]]; then
       path="$3"
       for pattern in "''${config_globs[@]:-}"; do
-        if [[ "$path" == $pattern ]]; then
-          exec "$openclaw_bin" "$@"
-        fi
+        case "$path" in
+          $pattern)
+            exec "$openclaw_bin" "$@"
+            ;;
+        esac
       done
       die "config path outside allowlist: $path"
     fi
