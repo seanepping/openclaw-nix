@@ -39,7 +39,7 @@ pkgs.writeShellApplication {
     mapfile -t allowed_exact < <(${pkgs.jq}/bin/jq -c --arg profile "$profile" '.profiles[$profile].commands.exact[]? // empty' "$POLICY_PATH")
     mapfile -t config_globs < <(${pkgs.jq}/bin/jq -r --arg profile "$profile" '.profiles[$profile].commands.configGet.allowedPaths[]? // empty' "$POLICY_PATH")
 
-    args_json=$(${pkgs.jq}/bin/jq -nc --args "$@" '$ARGS.positional')
+    args_json=$(${pkgs.jq}/bin/jq -nc --args -- "$@" '$ARGS.positional')
 
     for candidate in "''${allowed_exact[@]:-}"; do
       if [[ "$candidate" == "$args_json" ]]; then
