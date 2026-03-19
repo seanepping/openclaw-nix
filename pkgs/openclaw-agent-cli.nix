@@ -38,6 +38,8 @@ pkgs.writeShellApplication {
 
     mapfile -t allowed_exact < <(${pkgs.jq}/bin/jq -c --arg profile "$profile" '.profiles[$profile].commands.exact[]? // empty' "$POLICY_PATH")
     mapfile -t config_globs < <(${pkgs.jq}/bin/jq -r --arg profile "$profile" '.profiles[$profile].commands.configGet.allowedPaths[]? // empty' "$POLICY_PATH")
+    allow_help_top_level=$(${pkgs.jq}/bin/jq -r --arg profile "$profile" '.profiles[$profile].commands.help.topLevel // false' "$POLICY_PATH")
+    mapfile -t help_subcommands < <(${pkgs.jq}/bin/jq -r --arg profile "$profile" '.profiles[$profile].commands.help.subcommands[]? // empty' "$POLICY_PATH")
 
     args_json=$(printf '%s\0' "$@" | ${pkgs.jq}/bin/jq -Rsc 'split("\u0000")[:-1]')
 
@@ -47,8 +49,24 @@ pkgs.writeShellApplication {
       fi
     done
 
-    if [[ "$#" -eq 2 && "$1" == "logs" && "$2" == "--follow" ]]; then
+    if [[ "$#" -eq 1 && "$1" == "help" ]]; then
       exec "$openclaw_bin" "$@"
+    fi
+
+    if [[ "$#" -eq 1 && "$1" == "--help" ]]; then
+      exec "$openclaw_bin" "$@"
+    fi
+
+    if [[ "$#" -eq 2 && "$2" == "--help" && "$allow_help_top_level" == "true" ]]; then
+      exec "$openclaw_bin" "$@"
+    fi
+
+    if [[ "$#" -eq 3 && "$3" == "--help" ]]; then
+      for subcommand in "''${help_subcommands[@]:-}"; do
+        if [[ "$1" == "$subcommand" ]]; then
+          exec "$openclaw_bin" "$@"
+        fi
+      done
     fi
 
     if [[ "$#" -eq 3 && "$1" == "config" && "$2" == "get" ]]; then

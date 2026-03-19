@@ -105,6 +105,12 @@ in
         description = "Additional non-secret environment variables exported by the wrapper.";
       };
 
+      credentialEnv = lib.mkOption {
+        type = lib.types.attrsOf lib.types.path;
+        default = {};
+        description = "Credential-backed environment variables exported by the wrapper command at runtime.";
+      };
+
       profiles = lib.mkOption {
         type = lib.types.attrsOf json.type;
         default = {};
@@ -113,9 +119,13 @@ in
             commands = {
               exact = [
                 [ "status" "--deep" ]
-                [ "logs" "--lines" "200" ]
+                [ "logs" "--follow" ]
               ];
               configGet.allowedPaths = [ "gateway" "gateway.*" ];
+              help = {
+                topLevel = true;
+                subcommands = [ "status" "logs" "agents" "config" ];
+              };
             };
           };
         };
@@ -224,6 +234,11 @@ in
       (pkgs.writeShellScriptBin wrapperCfg.packageName ''
         set -euo pipefail
         export OPENCLAW_AGENT_CLI_POLICY_PATH="${wrapperPolicyPath}"
+
+        ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: path: ''
+          export ${name}="$(cat ${lib.escapeShellArg (toString path)})"
+        '') wrapperCfg.credentialEnv)}
+
         exec ${wrapperPackage}/bin/openclaw-agent-cli "$@"
       '')
     ];
