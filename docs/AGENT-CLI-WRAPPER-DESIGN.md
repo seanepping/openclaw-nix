@@ -8,19 +8,9 @@ Provide a reusable, Nix-managed way to expose a narrow OpenClaw CLI surface to a
 
 This belongs in `openclaw-nix` because it is packaging and module machinery, not fleet-specific policy.
 
-## Review Status
+## Scope
 
-This document now has a first visual implementation companion:
-
-- `pkgs/openclaw-agent-cli.nix`
-
-That packaged helper is intentionally incomplete, but it is concrete enough to review the shape:
-
-- single helper binary
-- Nix-provided policy file path
-- exact argv allowlist support
-- constrained `config get` path allowlist support
-- no raw shell passthrough
+This document describes the wrapper shape and why it exists. It is not a task tracker.
 
 ## Design Split
 
@@ -53,24 +43,18 @@ The safer model is:
 2. only the dedicated wrapper executable is allowlisted for the agent
 3. the wrapper enforces subcommand, flag, and path policy from a Nix-generated policy file
 
-## What The Readonly Test Taught Us
+## Runtime Constraints
 
-The first deployment test exposed two important truths:
+Two runtime constraints shape this design:
 
-- the wrapper cannot assume direct read access to `/run/agenix/...` secrets
-- the wrapper cannot assume the OpenClaw binary lives at `/run/current-system/sw/bin/openclaw`
+- the wrapper cannot assume direct read access to raw secret files
+- the wrapper cannot assume the OpenClaw executable is available at a globally linked path
 
-On the tested host, the service works because:
-
-- secrets are injected through `LoadCredential=`
-- the service startup script reads from `$CREDENTIALS_DIRECTORY/...`
-- the OpenClaw executable is invoked from its store path
-
-That means the reusable wrapper design should:
+That means the wrapper should:
 
 - source the OpenClaw binary path from Nix
-- avoid direct reads from raw agenix secret paths
-- use a Nix-managed runtime env/credential mechanism rather than ad hoc host shell assumptions
+- avoid direct reads from raw secret paths
+- use deployment-managed runtime env and credential wiring
 
 ## Interaction With OpenClaw Native Controls
 
@@ -80,11 +64,11 @@ We should treat these as complementary layers:
 - **`tools.exec.safeBins`:** useful for stdin-only utilities, not for `openclaw`
 - **Wrapper policy file:** inner gate on which `openclaw` actions are permitted
 
-Current direction after review:
+## Exec Approvals Boundary
 
-- `exec-approvals.json` should remain OpenClaw-owned, not Nix-owned
+- `exec-approvals.json` remains OpenClaw-owned, not Nix-owned
 - the wrapper policy may still be Nix-generated and deployment-managed
-- raw `openclaw` should stay off the agent's exec approval allowlist
+- raw `openclaw` stays off the agent's exec approval allowlist
 - only the dedicated wrapper path should be allowlisted for the relevant agent ids
 
 ## Proposed Runtime Shape
@@ -133,7 +117,6 @@ First cut JSON shape:
       "commands": {
         "exact": [
           ["status", "--deep"],
-          ["logs", "--lines", "200"],
           ["logs", "--follow"],
           ["agents", "list", "--bindings"]
         ],
@@ -181,7 +164,6 @@ services.openclaw.agentCliWrapper = {
   profiles.readonly = {
     commands.exact = [
       [ "status" "--deep" ]
-      [ "logs" "--lines" "200" ]
       [ "logs" "--follow" ]
       [ "agents" "list" "--bindings" ]
     ];
@@ -200,6 +182,12 @@ services.openclaw.agentCliWrapper = {
     ];
   };
 
+    commands.help = {
+      topLevel = true;
+      subcommands = [ "status" "logs" "agents" "config" ];
+    };
+  };
+
   agentBindings = {
     main = "readonly";
   };
@@ -208,39 +196,16 @@ services.openclaw.agentCliWrapper = {
 
 The exact schema can be refined, but the important part is that policy stays declarative and host-supplied.
 
-## Tracer Bullets
+## Current Shape
 
-### Phase 1: Document and model
+The current implementation direction is:
 
-- [x] Record the outer/inner gate model in `openclaw-nix` docs.
-- [x] Add a first packaged helper for visual review.
-- [ ] Choose the first stable option schema for wrapper + policies.
-
-### Phase 2: Reusable module machinery
-
-- [ ] Add `services.openclaw.agentCliWrapper.*` options in `openclaw-nix`.
-- [ ] Generate the policy file from Nix data.
-- [ ] Generate/install the wrapper in `/run/current-system/sw/bin`.
-- [ ] Support explicit env + runtime credential plumbing without `sudo`.
-
-### Phase 3: Consumer integration
-
-- [ ] Move deployment policy data out of ad hoc shell snippets and into Nix policy config.
-- [ ] Define shared profiles and bind the relevant agent ids to those profiles.
-- [ ] Remove the current broken host-local readonly wrappers instead of preserving them.
-
-### Phase 4: Exec approvals alignment
-
-- [ ] Document the expected exec-approval stance for the wrapper.
-- [ ] Allowlist only the dedicated wrapper path for the relevant agent ids.
-- [ ] Keep raw `openclaw` off the agent allowlist.
-- [ ] Keep `exec-approvals.json` under OpenClaw's own management, not Nix.
-
-### Phase 5: Verify and expand
-
-- [ ] Test readonly wrapper behavior after deploy.
-- [ ] Add `doctor` or `security audit` only if their behavior stays acceptably read-only.
-- [ ] Design a separate narrow write profile for reminder/cron continuity work.
+- a single installed helper command
+- a generated policy file in OpenClaw state
+- profile-based command policy with agent bindings
+- explicit runtime env export
+- optional credential-backed env export
+- explicit help-only discovery paths alongside strict action allowlists
 
 ## Decision Heuristic
 
