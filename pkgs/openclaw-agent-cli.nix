@@ -50,11 +50,9 @@ pkgs.writeShellApplication {
     if [[ "$#" -eq 3 && "$1" == "config" && "$2" == "get" ]]; then
       path="$3"
       for pattern in "''${config_globs[@]:-}"; do
-        case "$path" in
-          $pattern)
-            exec "$openclaw_bin" "$@"
-            ;;
-        esac
+        if ${pkgs.bash}/bin/bash -O extglob -c 'case "$1" in $2) exit 0 ;; *) exit 1 ;; esac' _ "$path" "$pattern"; then
+          exec "$openclaw_bin" "$@"
+        fi
       done
       die "config path outside allowlist: $path"
     fi
