@@ -1,15 +1,13 @@
 # openclaw.nix
 
-NixOS configuration for running OpenClaw (gateway/agent) + secrets management.
+Reusable NixOS module(s) for running OpenClaw with deployment-managed configuration and credentials.
 
-Goals:
-- Own the module/config (avoid depending on stale external nix-openclaw)
-- Use agenix for secrets stored in git
-- Keep `/var/lib/openclaw/openclaw.json` non-secret where possible
-- Inject secrets via systemd credentials/env, not plaintext config
+Current state:
+- OpenClaw service module for gateway/agent deployments
+- systemd credential-based secret injection
+- reusable agent CLI wrapper module for narrow, policy-enforced CLI access
 
-Status: scaffold
-
-Current work in progress:
-- reusable OpenClaw service module
-- early design for a packaged `openclaw-agent-cli` policy wrapper
+Documentation:
+- `docs/usage.md`
+- `docs/decisions.md`
+- `docs/agent-cli-wrapper-design.md`
