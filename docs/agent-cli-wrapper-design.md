@@ -103,7 +103,7 @@ The wrapper should:
 
 ## Policy Shape
 
-The scalable model is a profile-local rule list with optional deny rules.
+The scalable model is a profile-local allow/deny rule list.
 
 ```json
 {
@@ -114,7 +114,7 @@ The scalable model is a profile-local rule list with optional deny rules.
   },
   "profiles": {
     "readonly": {
-      "rules": [
+      "allowRules": [
         {
           "kind": "exact",
           "argv": ["status", "--deep"]
@@ -171,7 +171,7 @@ Supported rule kinds:
     - `argIndex` (required): zero-based argv index to validate
     - `allowed` (required): allowed glob patterns for the selected arg
     - `minArgs` (optional): defaults to `prefix.length + 1`
-    - `maxArgs` (optional): defaults to `prefix.length + 1`
+    - `maxArgs` (optional): no upper bound unless explicitly set
   - use when one argument needs an explicit allowlist while other parsing still belongs to the CLI
 - `help`
   - fields:
@@ -180,7 +180,8 @@ Supported rule kinds:
     - `maxDepth` (optional): maximum argv length accepted for help exploration; defaults to `64`
   - use to keep CLI exploration available without broadening normal command execution
 
-Deny rules use the same rule kinds as allow rules. They run first.
+Profiles use the explicit keys `allowRules` and `denyRules`.
+Both use the same rule kinds, and `denyRules` run first.
 
 ## Proposed Module Surface
 
@@ -199,7 +200,7 @@ services.openclaw.agentCliWrapper = {
   };
 
   profiles.readonly = {
-    rules = [
+    allowRules = [
       {
         kind = "exact";
         argv = [ "status" "--deep" ];
@@ -231,7 +232,12 @@ services.openclaw.agentCliWrapper = {
       }
     ];
 
-    denyRules = [ ];
+    denyRules = [
+      {
+        kind = "exact";
+        argv = [ "gateway" "restart" ];
+      }
+    ];
   };
 
   agentBindings = {

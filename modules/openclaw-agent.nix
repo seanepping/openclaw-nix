@@ -116,7 +116,7 @@ in
         default = {};
         example = {
           readonly = {
-            rules = [
+            allowRules = [
               {
                 kind = "exact";
                 argv = [ "status" "--deep" ];

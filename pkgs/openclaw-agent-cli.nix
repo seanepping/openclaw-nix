@@ -36,7 +36,7 @@ pkgs.writeShellApplication {
     profile=$(${pkgs.jq}/bin/jq -r --arg agent "$agent_id" '.agentBindings[$agent] // empty' "$POLICY_PATH")
     [[ -n "$profile" ]] || die "no wrapper policy bound for agent: $agent_id"
 
-    mapfile -t profile_rules < <(${pkgs.jq}/bin/jq -c --arg profile "$profile" '.profiles[$profile].rules[]? // empty' "$POLICY_PATH")
+    mapfile -t allow_rules < <(${pkgs.jq}/bin/jq -c --arg profile "$profile" '.profiles[$profile].allowRules[]? // empty' "$POLICY_PATH")
     mapfile -t deny_rules < <(${pkgs.jq}/bin/jq -c --arg profile "$profile" '.profiles[$profile].denyRules[]? // empty' "$POLICY_PATH")
 
     args_json=$(printf '%s\0' "$@" | ${pkgs.jq}/bin/jq -Rsc 'split("\u0000")[:-1]')
@@ -84,7 +84,7 @@ pkgs.writeShellApplication {
       prefix_json=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -c '.prefix')
       prefix_len=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.prefix | length')
       min_args=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.minArgs // (.prefix | length + 1)')
-      max_args=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.maxArgs // (.prefix | length + 1)')
+      max_args=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.maxArgs // -1')
 
       if (( $# < min_args )); then
         return 1
@@ -170,7 +170,7 @@ pkgs.writeShellApplication {
       fi
     done
 
-    for rule in "''${profile_rules[@]:-}"; do
+    for rule in "''${allow_rules[@]:-}"; do
       [[ -z "$rule" ]] && continue
       if rule_matches "$rule" "$@"; then
         exec "$openclaw_bin" "$@"
