@@ -39,13 +39,17 @@ pkgs.writeShellApplication {
     mapfile -t allowed_exact < <(${pkgs.jq}/bin/jq -c --arg profile "$profile" '.profiles[$profile].commands.exact[]? // empty' "$POLICY_PATH")
     mapfile -t config_globs < <(${pkgs.jq}/bin/jq -r --arg profile "$profile" '.profiles[$profile].commands.configGet.allowedPaths[]? // empty' "$POLICY_PATH")
 
-    args_json=$(printf '%s\n' "$@" | ${pkgs.jq}/bin/jq -R . | ${pkgs.jq}/bin/jq -s .)
+    args_json=$(${pkgs.jq}/bin/jq -nc --args "$@" '$ARGS.positional')
 
     for candidate in "''${allowed_exact[@]:-}"; do
       if [[ "$candidate" == "$args_json" ]]; then
         exec "$openclaw_bin" "$@"
       fi
     done
+
+    if [[ "$#" -eq 2 && "$1" == "logs" && "$2" == "--follow" ]]; then
+      exec "$openclaw_bin" "$@"
+    fi
 
     if [[ "$#" -eq 3 && "$1" == "config" && "$2" == "get" ]]; then
       path="$3"
