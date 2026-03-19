@@ -101,9 +101,9 @@ The wrapper should:
 - validate argv against the generated policy
 - exec the real OpenClaw binary only after policy acceptance
 
-## Proposed Policy Shape
+## Policy Shape
 
-First cut JSON shape:
+The scalable model is a profile-local rule list.
 
 ```json
 {
@@ -114,14 +114,24 @@ First cut JSON shape:
   },
   "profiles": {
     "readonly": {
-      "commands": {
-        "exact": [
-          ["status", "--deep"],
-          ["logs", "--follow"],
-          ["agents", "list", "--bindings"]
-        ],
-        "configGet": {
-          "allowedPaths": [
+      "rules": [
+        {
+          "kind": "exact",
+          "argv": ["status", "--deep"]
+        },
+        {
+          "kind": "exact",
+          "argv": ["logs", "--follow"]
+        },
+        {
+          "kind": "exact",
+          "argv": ["agents", "list", "--bindings"]
+        },
+        {
+          "kind": "prefixArgGlob",
+          "prefix": ["config", "get"],
+          "argIndex": 2,
+          "allowed": [
             "gateway",
             "gateway.*",
             "agents",
@@ -133,8 +143,13 @@ First cut JSON shape:
             "skills",
             "skills.*"
           ]
+        },
+        {
+          "kind": "help",
+          "topLevel": true,
+          "subcommands": ["status", "logs", "agents", "config"]
         }
-      }
+      ]
     }
   },
   "agentBindings": {
@@ -142,8 +157,6 @@ First cut JSON shape:
   }
 }
 ```
-
-This keeps the first pass narrow, readable, and audit-friendly.
 
 ## Proposed Module Surface
 
@@ -161,40 +174,48 @@ services.openclaw.agentCliWrapper = {
     OPENCLAW_CONFIG_PATH = "${config.services.openclaw.stateDir}/.openclaw/openclaw.json";
   };
 
-  profiles.readonly = {
-    commands.exact = [
-      [ "status" "--deep" ]
-      [ "logs" "--follow" ]
-      [ "agents" "list" "--bindings" ]
-    ];
-
-    commands.configGet.allowedPaths = [
-      "gateway"
-      "gateway.*"
-      "agents"
-      "agents.*"
-      "channels"
-      "channels.*"
-      "models"
-      "models.*"
-      "skills"
-      "skills.*"
-    ];
-  };
-
-    commands.help = {
+  profiles.readonly.rules = [
+    {
+      kind = "exact";
+      argv = [ "status" "--deep" ];
+    }
+    {
+      kind = "exact";
+      argv = [ "logs" "--follow" ];
+    }
+    {
+      kind = "exact";
+      argv = [ "agents" "list" "--bindings" ];
+    }
+    {
+      kind = "prefixArgGlob";
+      prefix = [ "config" "get" ];
+      argIndex = 2;
+      allowed = [
+        "gateway"
+        "gateway.*"
+        "agents"
+        "agents.*"
+        "channels"
+        "channels.*"
+        "models"
+        "models.*"
+        "skills"
+        "skills.*"
+      ];
+    }
+    {
+      kind = "help";
       topLevel = true;
       subcommands = [ "status" "logs" "agents" "config" ];
-    };
-  };
+    }
+  ];
 
   agentBindings = {
     main = "readonly";
   };
 };
 ```
-
-The exact schema can be refined, but the important part is that policy stays declarative and host-supplied.
 
 ## Current Shape
 
