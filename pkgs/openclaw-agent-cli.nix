@@ -57,6 +57,8 @@ pkgs.writeShellApplication {
     prefix_matches() {
       local rule="$1"
       local prefix_json prefix_len min_args max_args candidate_prefix
+      shift
+
       prefix_json=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -c '.prefix')
       prefix_len=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.prefix | length')
       min_args=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.minArgs // (.prefix | length)')
@@ -81,6 +83,8 @@ pkgs.writeShellApplication {
     prefix_arg_glob_matches() {
       local rule="$1"
       local prefix_json prefix_len min_args max_args candidate_prefix target_arg
+      shift
+
       prefix_json=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -c '.prefix')
       prefix_len=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.prefix | length')
       min_args=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.minArgs // (.prefix | length + 1)')
@@ -117,6 +121,8 @@ pkgs.writeShellApplication {
     help_matches() {
       local rule="$1"
       local allow_any allow_top_level max_depth
+      shift
+
       allow_any=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.allowAnyCommand // false')
       allow_top_level=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.topLevel // false')
       max_depth=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.maxDepth // 64')
