@@ -20,7 +20,16 @@ let
 
   wrapperPolicyFormat = pkgs.formats.json {};
   wrapperPackage = pkgs.callPackage ../pkgs/openclaw-agent-cli.nix {};
-  wrapperCredentialDir = "${stateConfigDir}/agent-cli-credentials";
+  wrapperLauncher = pkgs.writeShellScriptBin wrapperCfg.packageName ''
+    set -euo pipefail
+    export OPENCLAW_AGENT_CLI_POLICY_PATH="${wrapperPolicyPath}"
+
+    ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: path: ''
+      export ${name}="$(cat ${lib.escapeShellArg (toString path)})"
+    '') wrapperCfg.credentialEnv)}
+
+    exec ${pkgs.util-linux}/bin/runuser -u ${lib.escapeShellArg cfg.user} -- ${wrapperPackage}/bin/openclaw-agent-cli "$@"
+  '';
 
   wrapperPolicy = wrapperPolicyFormat.generate "openclaw-agent-cli-policy.json" {
     openclawBin = "${openclawPkg}/bin/openclaw";
@@ -241,18 +250,7 @@ in
       };
     };
 
-    environment.systemPackages = lib.mkIf enabledWrapper [
-      (pkgs.writeShellScriptBin wrapperCfg.packageName ''
-        set -euo pipefail
-        export OPENCLAW_AGENT_CLI_POLICY_PATH="${wrapperPolicyPath}"
-
-        ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: _path: ''
-          export ${name}="$(cat ${lib.escapeShellArg "${wrapperCredentialDir}/${name}"})"
-        '') wrapperCfg.credentialEnv)}
-
-        exec ${wrapperPackage}/bin/openclaw-agent-cli "$@"
-      '')
-    ];
+    environment.systemPackages = lib.mkIf enabledWrapper [ wrapperLauncher ];
 
     # Also place the config at the runtime path expected by the service.
     systemd.tmpfiles.rules = [
@@ -262,7 +260,6 @@ in
       "L+ ${stateDir}/openclaw.json - - - - /etc/openclaw/openclaw.json"
     ] ++ lib.optionals enabledWrapper [
       "C ${wrapperPolicyPath} 0640 ${cfg.user} ${cfg.group} - ${wrapperPolicy}"
-      "d ${wrapperCredentialDir} 0750 ${cfg.user} ${cfg.group} - -"
-    ] ++ lib.optionals enabledWrapper (lib.mapAttrsToList (name: path: "C ${wrapperCredentialDir}/${name} 0400 ${cfg.user} ${cfg.group} - ${toString path}") wrapperCfg.credentialEnv);
+    ];
   };
 }
