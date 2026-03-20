@@ -20,16 +20,6 @@ let
 
   wrapperPolicyFormat = pkgs.formats.json {};
   wrapperPackage = pkgs.callPackage ../pkgs/openclaw-agent-cli.nix {};
-  wrapperLauncher = pkgs.writeShellScriptBin wrapperCfg.packageName ''
-    set -euo pipefail
-    export OPENCLAW_AGENT_CLI_POLICY_PATH="${wrapperPolicyPath}"
-
-    ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: path: ''
-      export ${name}="$(cat ${lib.escapeShellArg (toString path)})"
-    '') wrapperCfg.credentialEnv)}
-
-    exec ${pkgs.util-linux}/bin/runuser -u ${lib.escapeShellArg cfg.user} -- ${wrapperPackage}/bin/openclaw-agent-cli "$@"
-  '';
 
   wrapperPolicy = wrapperPolicyFormat.generate "openclaw-agent-cli-policy.json" {
     openclawBin = "${openclawPkg}/bin/openclaw";
@@ -250,7 +240,18 @@ in
       };
     };
 
-    environment.systemPackages = lib.mkIf enabledWrapper [ wrapperLauncher ];
+    environment.systemPackages = lib.mkIf enabledWrapper [
+      (pkgs.writeShellScriptBin wrapperCfg.packageName ''
+        set -euo pipefail
+        export OPENCLAW_AGENT_CLI_POLICY_PATH="${wrapperPolicyPath}"
+
+        ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: path: ''
+          export ${name}="$(cat ${lib.escapeShellArg (toString path)})"
+        '') wrapperCfg.credentialEnv)}
+
+        exec ${wrapperPackage}/bin/openclaw-agent-cli "$@"
+      '')
+    ];
 
     system.activationScripts.openclaw-agent-cli-policy = lib.mkIf enabledWrapper ''
       mkdir -p ${lib.escapeShellArg stateConfigDir}
