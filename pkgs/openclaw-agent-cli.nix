@@ -82,13 +82,15 @@ pkgs.writeShellApplication {
 
     prefix_arg_glob_matches() {
       local rule="$1"
-      local prefix_json prefix_len min_args max_args candidate_prefix target_arg
+      local prefix_json prefix_len min_args max_args candidate_prefix target_arg arg_index target_position
       shift
 
       prefix_json=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -c '.prefix')
       prefix_len=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.prefix | length')
       min_args=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.minArgs // (.prefix | length + 1)')
       max_args=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.maxArgs // -1')
+      arg_index=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.argIndex')
+      target_position=$((arg_index + 1))
 
       if (( $# < min_args )); then
         return 1
@@ -107,7 +109,11 @@ pkgs.writeShellApplication {
         return 1
       fi
 
-      target_arg=$(${pkgs.jq}/bin/jq -r --argjson argv "$args_json" '.argIndex as $i | $argv[$i] // empty' <<<"$rule")
+      if (( target_position > $# )); then
+        return 1
+      fi
+
+      target_arg="''${!target_position}"
       mapfile -t allowed_globs < <(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.allowed[]? // empty')
       for pattern in "''${allowed_globs[@]:-}"; do
         if match_glob "$target_arg" "$pattern"; then
@@ -147,6 +153,7 @@ pkgs.writeShellApplication {
 
     rule_matches() {
       local rule="$1"
+      shift
       local rule_kind
       rule_kind=$(printf '%s' "$rule" | ${pkgs.jq}/bin/jq -r '.kind')
 

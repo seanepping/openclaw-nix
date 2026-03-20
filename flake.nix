@@ -16,6 +16,7 @@
       nixosModules.default = import ./modules/openclaw-agent.nix;
 
       packages.${system}.openclaw-agent-cli = pkgs.callPackage ./pkgs/openclaw-agent-cli.nix {};
+      checks.${system}.openclaw-agent-cli = import ./checks/openclaw-agent-cli.nix { inherit pkgs; };
 
       # Example host; copy/adapt for your actual machines.
       nixosConfigurations.example = nixpkgs.lib.nixosSystem {
