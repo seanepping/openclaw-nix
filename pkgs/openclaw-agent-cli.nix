@@ -76,7 +76,7 @@ pkgs.writeShellApplication {
         return 1
       fi
 
-      candidate_prefix=$(printf '%s\0' "''${@:1:prefix_len}" | ${pkgs.jq}/bin/jq -Rsc 'split("\u0000")[:-1]')
+      candidate_prefix=$(printf '%s\0' "''${@:1:$prefix_len}" | ${pkgs.jq}/bin/jq -Rsc 'split("\u0000")[:-1]')
       [[ "$candidate_prefix" == "$prefix_json" ]]
     }
 
@@ -104,7 +104,7 @@ pkgs.writeShellApplication {
         return 1
       fi
 
-      candidate_prefix=$(printf '%s\0' "''${@:1:prefix_len}" | ${pkgs.jq}/bin/jq -Rsc 'split("\u0000")[:-1]')
+      candidate_prefix=$(printf '%s\0' "''${@:1:$prefix_len}" | ${pkgs.jq}/bin/jq -Rsc 'split("\u0000")[:-1]')
       if [[ "$candidate_prefix" != "$prefix_json" ]]; then
         return 1
       fi
