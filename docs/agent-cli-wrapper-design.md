@@ -101,9 +101,9 @@ The wrapper should:
 - validate argv against the generated policy
 - exec the real OpenClaw binary only after policy acceptance
 
-## Proposed Policy Shape
+## Policy Shape
 
-First cut JSON shape:
+The scalable model is a profile-local allow/deny rule list.
 
 ```json
 {
@@ -114,14 +114,20 @@ First cut JSON shape:
   },
   "profiles": {
     "readonly": {
-      "commands": {
-        "exact": [
-          ["status", "--deep"],
-          ["logs", "--follow"],
-          ["agents", "list", "--bindings"]
-        ],
-        "configGet": {
-          "allowedPaths": [
+      "allowRules": [
+        {
+          "kind": "exact",
+          "argv": ["status", "--deep"]
+        },
+        {
+          "kind": "prefix",
+          "prefix": ["docs"]
+        },
+        {
+          "kind": "prefixArgGlob",
+          "prefix": ["config", "get"],
+          "argIndex": 2,
+          "allowed": [
             "gateway",
             "gateway.*",
             "agents",
@@ -133,8 +139,13 @@ First cut JSON shape:
             "skills",
             "skills.*"
           ]
+        },
+        {
+          "kind": "help",
+          "allowAnyCommand": true
         }
-      }
+      ],
+      "denyRules": []
     }
   },
   "agentBindings": {
@@ -143,7 +154,34 @@ First cut JSON shape:
 }
 ```
 
-This keeps the first pass narrow, readable, and audit-friendly.
+Supported rule kinds:
+
+- `exact`
+  - fields:
+    - `argv` (required): exact argv vector to allow or deny
+- `prefix`
+  - fields:
+    - `prefix` (required): argv prefix to match
+    - `minArgs` (optional): minimum total argv length; defaults to `prefix.length`
+    - `maxArgs` (optional): maximum total argv length; if omitted, no upper bound is enforced
+  - use when the underlying CLI should validate normal arguments and the wrapper only needs to authorize command shape
+- `prefixArgGlob`
+  - fields:
+    - `prefix` (required): argv prefix to match
+    - `argIndex` (required): zero-based argv index to validate
+    - `allowed` (required): allowed glob patterns for the selected arg
+    - `minArgs` (optional): defaults to `prefix.length + 1`
+    - `maxArgs` (optional): no upper bound unless explicitly set
+  - use when one argument needs an explicit allowlist while other parsing still belongs to the CLI
+- `help`
+  - fields:
+    - `allowAnyCommand` (optional): allow any command structure ending in `--help`
+    - `topLevel` (optional): allow `<command> --help`
+    - `maxDepth` (optional): maximum argv length accepted for help exploration; defaults to `64`
+  - use to keep CLI exploration available without broadening normal command execution
+
+Profiles use the explicit keys `allowRules` and `denyRules`.
+Both use the same rule kinds, and `denyRules` run first.
 
 ## Proposed Module Surface
 
@@ -162,30 +200,44 @@ services.openclaw.agentCliWrapper = {
   };
 
   profiles.readonly = {
-    commands.exact = [
-      [ "status" "--deep" ]
-      [ "logs" "--follow" ]
-      [ "agents" "list" "--bindings" ]
+    allowRules = [
+      {
+        kind = "exact";
+        argv = [ "status" "--deep" ];
+      }
+      {
+        kind = "prefix";
+        prefix = [ "docs" ];
+      }
+      {
+        kind = "prefixArgGlob";
+        prefix = [ "config" "get" ];
+        argIndex = 2;
+        allowed = [
+          "gateway"
+          "gateway.*"
+          "agents"
+          "agents.*"
+          "channels"
+          "channels.*"
+          "models"
+          "models.*"
+          "skills"
+          "skills.*"
+        ];
+      }
+      {
+        kind = "help";
+        allowAnyCommand = true;
+      }
     ];
 
-    commands.configGet.allowedPaths = [
-      "gateway"
-      "gateway.*"
-      "agents"
-      "agents.*"
-      "channels"
-      "channels.*"
-      "models"
-      "models.*"
-      "skills"
-      "skills.*"
+    denyRules = [
+      {
+        kind = "exact";
+        argv = [ "gateway" "restart" ];
+      }
     ];
-  };
-
-    commands.help = {
-      topLevel = true;
-      subcommands = [ "status" "logs" "agents" "config" ];
-    };
   };
 
   agentBindings = {
@@ -194,18 +246,17 @@ services.openclaw.agentCliWrapper = {
 };
 ```
 
-The exact schema can be refined, but the important part is that policy stays declarative and host-supplied.
-
 ## Current Shape
 
 The current implementation direction is:
 
 - a single installed helper command
 - a generated policy file in OpenClaw state
-- profile-based command policy with agent bindings
+- profile-based rule lists with agent bindings
 - explicit runtime env export
 - optional credential-backed env export
-- explicit help-only discovery paths alongside strict action allowlists
+- help as a first-class exploration rule
+- optional deny rules ahead of allow rules
 
 ## Decision Heuristic
 

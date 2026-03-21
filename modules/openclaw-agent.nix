@@ -116,17 +116,27 @@ in
         default = {};
         example = {
           readonly = {
-            commands = {
-              exact = [
-                [ "status" "--deep" ]
-                [ "logs" "--follow" ]
-              ];
-              configGet.allowedPaths = [ "gateway" "gateway.*" ];
-              help = {
-                topLevel = true;
-                subcommands = [ "status" "logs" "agents" "config" ];
-              };
-            };
+            allowRules = [
+              {
+                kind = "exact";
+                argv = [ "status" "--deep" ];
+              }
+              {
+                kind = "prefix";
+                prefix = [ "docs" ];
+              }
+              {
+                kind = "prefixArgGlob";
+                prefix = [ "config" "get" ];
+                argIndex = 2;
+                allowed = [ "gateway" "gateway.*" ];
+              }
+              {
+                kind = "help";
+                allowAnyCommand = true;
+              }
+            ];
+            denyRules = [ ];
           };
         };
         description = "Named wrapper policy profiles keyed by profile id.";
@@ -243,14 +253,19 @@ in
       '')
     ];
 
+    system.activationScripts.openclaw-agent-cli-policy = lib.mkIf enabledWrapper ''
+      mkdir -p ${lib.escapeShellArg stateConfigDir}
+      cp -f ${lib.escapeShellArg (toString wrapperPolicy)} ${lib.escapeShellArg wrapperPolicyPath}
+      chown ${cfg.user}:${cfg.group} ${lib.escapeShellArg wrapperPolicyPath}
+      chmod 0640 ${lib.escapeShellArg wrapperPolicyPath}
+    '';
+
     # Also place the config at the runtime path expected by the service.
     systemd.tmpfiles.rules = [
       "d ${stateDir} 0750 ${cfg.user} ${cfg.group} - -"
       "d ${stateConfigDir} 0750 ${cfg.user} ${cfg.group} - -"
     ] ++ lib.optionals (cfg.settings != {}) [
       "L+ ${stateDir}/openclaw.json - - - - /etc/openclaw/openclaw.json"
-    ] ++ lib.optionals enabledWrapper [
-      "C ${wrapperPolicyPath} 0640 ${cfg.user} ${cfg.group} - ${wrapperPolicy}"
     ];
   };
 }
