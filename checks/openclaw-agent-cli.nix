@@ -23,6 +23,7 @@ EOF
       "allowRules": [
         { "kind": "exact", "argv": ["status", "--deep"] },
         { "kind": "prefix", "prefix": ["docs"] },
+        { "kind": "prefix", "prefix": ["cron"] },
         { "kind": "prefixArgGlob", "prefix": ["config", "get"], "argIndex": 2, "allowed": ["gateway", "gateway.*"] },
         { "kind": "help", "allowAnyCommand": true }
       ],
@@ -47,8 +48,20 @@ EOF
   "$wrapper" docs cron | tee docs.out
   grep -F 'OPENCLAW docs cron' docs.out
 
+  "$wrapper" docs memory search | tee docs2.out
+  grep -F 'OPENCLAW docs memory search' docs2.out
+
   "$wrapper" config get gateway | tee config.out
   grep -F 'OPENCLAW config get gateway' config.out
+
+  "$wrapper" config get gateway.auth.mode | tee config2.out
+  grep -F 'OPENCLAW config get gateway.auth.mode' config2.out
+
+  "$wrapper" help | tee help1.out
+  grep -F 'OPENCLAW help' help1.out
+
+  "$wrapper" cron --help | tee help2.out
+  grep -F 'OPENCLAW cron --help' help2.out
 
   if "$wrapper" config set gateway.port 9999 >deny.out 2>&1; then
     echo "expected deny rule to fail" >&2
