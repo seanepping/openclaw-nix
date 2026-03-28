@@ -14,6 +14,7 @@
     in
     {
       nixosModules.default = import ./modules/openclaw-agent.nix;
+      nixosModules.openclaw-cli-gateway = import ./modules/openclaw-cli-gateway.nix;
 
       packages.${system}.openclaw-agent-cli = pkgs.callPackage ./pkgs/openclaw-agent-cli.nix {};
       checks.${system}.openclaw-agent-cli = import ./checks/openclaw-agent-cli.nix { inherit pkgs; };
