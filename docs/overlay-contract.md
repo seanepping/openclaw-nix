@@ -79,8 +79,11 @@ its source mirror, we route around with one small file in the consumer flake.
 
 - Does not auto-fetch hashes. Hash chase is manual today and will become
   `loonar openclaw upgrade <version>` later.
-- Does not pin nixpkgs differently. Uses this flake's `nixpkgs` (currently
-  `nixos-unstable`) so `nodejs_22`, `pnpm_10`, `fetchPnpmDeps` are guaranteed
-  to be present.
+- Uses this flake's dedicated `nixpkgs-unstable` input (not the `nixpkgs`
+  input that consumers may follow-override to a stable channel). The gateway
+  derivation has hard requirements on `nodejs_22`, `pnpm_10`,
+  `fetchPnpmDeps` — these are unstable-only and overriding the dedicated
+  input will break the build. Consumers should leave `nixpkgs-unstable`
+  alone.
 - Does not provide `openclaw-app` (macOS) or `openclaw-tools`. Linux/x86_64
   only — that's the supported host shape.
