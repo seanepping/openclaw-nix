@@ -6,9 +6,19 @@ let
 
   json = pkgs.formats.json {};
 
+  enabledPlugins = lib.filterAttrs (_: p: p.enable) cfg.plugins;
+
+  # Plugins declared via `services.openclaw.plugins` get an entry under
+  # `plugins.entries.<id>` so the gateway knows which pre-staged extensions
+  # to activate. Caller-provided settings take precedence on conflict.
+  pluginEntries = lib.mapAttrs (_: p: { enabled = true; config = p.config; }) enabledPlugins;
+  effectiveSettings = lib.recursiveUpdate
+    (lib.optionalAttrs (pluginEntries != {}) { plugins.entries = pluginEntries; })
+    cfg.settings;
+
   # Non-secret base config. Secrets should be injected via systemd credentials/env.
-  # When settings are empty, we don't generate/force a JSON file.
-  openclawConfigFile = json.generate "openclaw.json" cfg.settings;
+  # When settings are empty (and no plugins declared), we don't generate/force a JSON file.
+  openclawConfigFile = json.generate "openclaw.json" effectiveSettings;
 
   # The upstream OpenClaw package to run. You can override this in host config.
   openclawPkg = cfg.package;
@@ -70,6 +80,47 @@ in
     settings = lib.mkOption {
       type = json.type;
       default = {};
+    };
+
+    # Externalized OpenClaw plugins (e.g. @openclaw/discord in 2026.5.x). Each
+    # plugin's package is symlinked into ${stateDir}/.openclaw/extensions/<id>/
+    # and a corresponding `plugins.entries.<id>.enabled = true` is merged into
+    # the seed config.
+    #
+    # The package output must be the unpacked plugin tree containing
+    # `openclaw.plugin.json`, `package.json`, `dist/`, and `node_modules/` —
+    # exactly what the gateway expects under `~/.openclaw/extensions/<id>/`.
+    plugins = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
+        options = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Stage and enable the ${name} plugin.";
+          };
+          package = lib.mkOption {
+            type = lib.types.package;
+            description = ''
+              Pre-staged plugin derivation. Output must contain
+              openclaw.plugin.json, package.json, dist/, node_modules/.
+            '';
+          };
+          config = lib.mkOption {
+            type = json.type;
+            default = {};
+            description = "Plugin-specific config injected at plugins.entries.${name}.config.";
+          };
+        };
+      }));
+      default = {};
+      description = "Externalized OpenClaw plugins to pre-stage and enable.";
+      example = lib.literalExpression ''
+        {
+          discord = {
+            package = openclaw-nix.packages.''${pkgs.system}.openclaw-discord;
+          };
+        }
+      '';
     };
 
     # Map of env vars to load from systemd credentials files.
@@ -205,7 +256,7 @@ in
 
           mkdir -p "$cfg_dir"
 
-          if [ -e "${openclawConfigFile}" ] && [ "${if cfg.settings != {} then "1" else "0"}" = "1" ]; then
+          if [ -e "${openclawConfigFile}" ] && [ "${if effectiveSettings != {} then "1" else "0"}" = "1" ]; then
             # If Nix settings are provided, seed from the generated JSON.
             cp -f "${openclawConfigFile}" "$cfg_path"
           else
@@ -234,7 +285,7 @@ in
       '';
     };
 
-    environment.etc = lib.mkIf (cfg.settings != {}) {
+    environment.etc = lib.mkIf (effectiveSettings != {}) {
       "openclaw/openclaw.json" = {
         source = openclawConfigFile;
       };
@@ -264,8 +315,13 @@ in
     systemd.tmpfiles.rules = [
       "d ${stateDir} 0750 ${cfg.user} ${cfg.group} - -"
       "d ${stateConfigDir} 0750 ${cfg.user} ${cfg.group} - -"
-    ] ++ lib.optionals (cfg.settings != {}) [
+    ] ++ lib.optionals (effectiveSettings != {}) [
       "L+ ${stateDir}/openclaw.json - - - - /etc/openclaw/openclaw.json"
-    ];
+    ] ++ lib.optionals (enabledPlugins != {}) (
+      [ "d ${stateConfigDir}/extensions 0750 ${cfg.user} ${cfg.group} - -" ]
+      ++ lib.mapAttrsToList (name: p:
+        "L+ ${stateConfigDir}/extensions/${name} - - - - ${p.package}"
+      ) enabledPlugins
+    );
   };
 }

@@ -28,7 +28,10 @@
     {
       nixosModules.default = import ./modules/openclaw-agent.nix;
 
-      packages.${system}.openclaw-agent-cli = pkgs.callPackage ./pkgs/openclaw-agent-cli.nix {};
+      packages.${system} = {
+        openclaw-agent-cli = pkgs.callPackage ./pkgs/openclaw-agent-cli.nix {};
+        openclaw-discord = pkgs.callPackage ./pkgs/openclaw-discord {};
+      };
       checks.${system}.openclaw-agent-cli = import ./checks/openclaw-agent-cli.nix { inherit pkgs; };
 
       lib.${system}.mkGateway = import ./lib/mkGateway.nix {

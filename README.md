@@ -8,6 +8,9 @@ Current state:
 - reusable agent CLI wrapper module for narrow, policy-enforced CLI access
 - `lib.mkGateway` helper for pinning openclaw-gateway to a specific upstream
   release when `openclaw/nix-openclaw`'s mirror is stale
+- `services.openclaw.plugins` option for staging externalized plugins (e.g.
+  `@openclaw/discord` in 2026.5.x) and the `openclaw-discord` package as a
+  reference implementation
 
 Documentation:
 - `docs/usage.md`
