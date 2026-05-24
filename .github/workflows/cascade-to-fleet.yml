@@ -1,0 +1,19 @@
+# On merge to main, open a PR against loonar-float-nix bumping the
+# `openclaw-nix` flake input. The fleet's next nixos-rebuild picks up
+# the new module / package on raft.
+#
+# See loonar-float-nix/.github/workflows/cascade-flake-input.yml for
+# the implementation.
+
+name: cascade-to-fleet
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  cascade:
+    uses: seanepping/loonar-float-nix/.github/workflows/cascade-flake-input.yml@main
+    with:
+      input-name: openclaw-nix
+      repo-name: openclaw-nix
